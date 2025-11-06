@@ -20,9 +20,9 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies
+      - name: Install dependencies (including dev for build)
         working-directory: backend
-        run: npm install --production
+        run: npm install
 
       - name: Build application
         working-directory: backend
