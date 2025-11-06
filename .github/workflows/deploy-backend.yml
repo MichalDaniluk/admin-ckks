@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci --only=production
+        run: npm install --production
 
       - name: Build application
         working-directory: backend
