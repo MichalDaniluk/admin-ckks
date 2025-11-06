@@ -32,6 +32,36 @@ export const routes: Routes = [
     loadChildren: () => import('./features/enrollments/enrollments.routes').then(m => m.ENROLLMENTS_ROUTES)
   },
   {
+    path: 'students',
+    canActivate: [authGuard],
+    loadChildren: () => import('./features/students/students.routes').then(m => m.STUDENTS_ROUTES)
+  },
+  {
+    path: 'users',
+    canActivate: [authGuard],
+    loadChildren: () => import('./features/users/users.routes').then(m => m.USERS_ROUTES)
+  },
+  {
+    path: 'instructors',
+    canActivate: [authGuard],
+    loadChildren: () => import('./features/instructors/instructors.routes').then(m => m.INSTRUCTORS_ROUTES)
+  },
+  {
+    path: 'locations',
+    canActivate: [authGuard],
+    loadChildren: () => import('./features/locations/locations.routes').then(m => m.LOCATIONS_ROUTES)
+  },
+  {
+    path: 'time-tracking',
+    canActivate: [authGuard],
+    loadChildren: () => import('./features/time-tracking/time-tracking.routes').then(m => m.TIME_TRACKING_ROUTES)
+  },
+  {
+    path: 'marketing/blog',
+    canActivate: [authGuard],
+    loadChildren: () => import('./features/marketing/blog/blog.routes').then(m => m.BLOG_ROUTES)
+  },
+  {
     path: '**',
     redirectTo: '/dashboard'
   }

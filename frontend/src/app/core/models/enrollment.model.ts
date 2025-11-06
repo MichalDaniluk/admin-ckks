@@ -61,7 +61,7 @@ export interface Enrollment {
 export interface CreateEnrollmentDto {
   studentId: string;
   sessionId: string;
-  enrollmentCode: string;
+  enrollmentCode?: string;
   status?: EnrollmentStatus;
   paymentStatus?: PaymentStatus;
   price?: number;
@@ -70,6 +70,9 @@ export interface CreateEnrollmentDto {
   internalNotes?: string;
   sendNotifications?: boolean;
   isWaitlist?: boolean;
+  amountPaid?: number;
+  paymentDate?: string;
+  paymentReference?: string;
 }
 
 export interface UpdateEnrollmentDto {
@@ -81,6 +84,9 @@ export interface UpdateEnrollmentDto {
   notes?: string;
   internalNotes?: string;
   sendNotifications?: boolean;
+  amountPaid?: number;
+  paymentDate?: string;
+  paymentReference?: string;
 }
 
 export interface RecordPaymentDto {
@@ -123,6 +129,10 @@ export interface QueryEnrollmentsDto {
   passed?: boolean;
   certificateIssued?: boolean;
   isWaitlist?: boolean;
+  enrolledAfter?: string;
+  enrolledBefore?: string;
+  sessionStartAfter?: string;
+  sessionStartBefore?: string;
   sortBy?: string;
   sortOrder?: 'ASC' | 'DESC';
 }
