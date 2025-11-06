@@ -1,0 +1,102 @@
+name: Deploy Frontend to Production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Angular application
+        working-directory: frontend
+        run: npm run build -- --configuration production
+
+      - name: Create deployment archive
+        working-directory: frontend
+        run: |
+          cd dist/frontend/browser
+          tar -czf ../../../frontend-deploy.tar.gz .
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${{ secrets.PROD_SSH_PORT || 22 }} -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to production server
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
+        run: |
+          # Upload deployment package
+          scp -P $PROD_SSH_PORT frontend/frontend-deploy.tar.gz $PROD_USER@$PROD_HOST:~/domains/admin.selpio.com/
+
+          # Extract and deploy
+          ssh -p $PROD_SSH_PORT $PROD_USER@$PROD_HOST << 'EOF'
+            cd ~/domains/admin.selpio.com
+
+            # Create backup
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            if [ -d "public_html" ] && [ "$(ls -A public_html)" ]; then
+              mkdir -p backups
+              tar -czf backups/backup_$TIMESTAMP.tar.gz -C public_html .
+              echo "✓ Created backup: backups/backup_$TIMESTAMP.tar.gz"
+            fi
+
+            # Deploy new version
+            mkdir -p public_html
+            rm -rf public_html/*
+            tar -xzf frontend-deploy.tar.gz -C public_html/
+            rm frontend-deploy.tar.gz
+
+            # Create .htaccess for Angular routing
+            cat > public_html/.htaccess << 'HTACCESS'
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>
+HTACCESS
+
+            # Clean old backups (keep last 10)
+            cd backups 2>/dev/null && ls -t backup_* 2>/dev/null | tail -n +11 | xargs -r rm -f
+
+            echo "✓ Frontend deployment completed successfully!"
+          EOF
+
+      - name: Health check
+        run: |
+          sleep 5
+          curl -f https://admin.selpio.com || exit 1
+
+      - name: Notify on success
+        if: success()
+        run: echo "✓ Frontend deployed successfully to production!"
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "✗ Frontend deployment failed! Check logs for details."

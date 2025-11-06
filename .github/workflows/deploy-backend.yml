@@ -1,0 +1,120 @@
+name: Deploy Backend to Production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci --only=production
+
+      - name: Build application
+        working-directory: backend
+        run: npm run build
+
+      - name: Create deployment package
+        working-directory: backend
+        run: |
+          mkdir -p deploy
+          cp -r dist deploy/
+          cp package*.json deploy/
+          tar -czf deploy.tar.gz deploy/
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${{ secrets.PROD_SSH_PORT || 22 }} -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to production server
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
+        run: |
+          # Upload deployment package
+          scp -P $PROD_SSH_PORT backend/deploy.tar.gz $PROD_USER@$PROD_HOST:~/domains/apiadmin.selpio.com/
+
+          # Extract and deploy
+          ssh -p $PROD_SSH_PORT $PROD_USER@$PROD_HOST << 'EOF'
+            cd ~/domains/apiadmin.selpio.com
+
+            # Backup current version
+            if [ -d "public_nodejs/current" ]; then
+              BACKUP_DIR="public_nodejs/backup_$(date +%Y%m%d_%H%M%S)"
+              mv public_nodejs/current $BACKUP_DIR
+              echo "✓ Created backup: $BACKUP_DIR"
+            fi
+
+            # Extract new version
+            mkdir -p public_nodejs/current
+            tar -xzf deploy.tar.gz -C public_nodejs/
+            mv public_nodejs/deploy/* public_nodejs/current/
+            rm -rf public_nodejs/deploy
+            rm deploy.tar.gz
+
+            # Install production dependencies
+            cd public_nodejs/current
+            npm ci --only=production
+
+            # Copy .env.production if exists
+            if [ -f "../../.env.production" ]; then
+              cp ../../.env.production .env
+            fi
+
+            # Run migrations
+            if [ -f "package.json" ] && grep -q "migration:run" package.json; then
+              npm run migration:run || echo "⚠ Migration failed or not configured"
+            fi
+
+            # Restart PM2 application
+            if pm2 describe admin-backend > /dev/null 2>&1; then
+              pm2 restart admin-backend
+              echo "✓ Application restarted"
+            else
+              pm2 start dist/main.js --name admin-backend --node-args="--max-old-space-size=512"
+              pm2 save
+              echo "✓ Application started"
+            fi
+
+            # Show status
+            pm2 status admin-backend
+
+            # Clean old backups (keep last 5)
+            cd ~/domains/apiadmin.selpio.com/public_nodejs
+            ls -t backup_* 2>/dev/null | tail -n +6 | xargs -r rm -rf
+
+            echo "✓ Deployment completed successfully!"
+          EOF
+
+      - name: Health check
+        run: |
+          sleep 10
+          curl -f https://apiadmin.selpio.com/api/v1/health || exit 1
+
+      - name: Notify on success
+        if: success()
+        run: echo "✓ Backend deployed successfully to production!"
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "✗ Backend deployment failed! Check logs for details."
