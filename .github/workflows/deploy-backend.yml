@@ -21,12 +21,15 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
+        working-directory: backend
         run: npm install --production
 
       - name: Build application
+        working-directory: backend
         run: npm run build
 
       - name: Create deployment package
+        working-directory: backend
         run: |
           mkdir -p deploy
           cp -r dist deploy/
@@ -47,7 +50,7 @@ jobs:
           PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
         run: |
           # Upload deployment package
-          scp -P $PROD_SSH_PORT deploy.tar.gz $PROD_USER@$PROD_HOST:~/domains/apiadmin.selpio.com/
+          scp -P $PROD_SSH_PORT backend/deploy.tar.gz $PROD_USER@$PROD_HOST:~/domains/apiadmin.selpio.com/
 
           # Extract and deploy
           ssh -p $PROD_SSH_PORT $PROD_USER@$PROD_HOST << 'EOF'
